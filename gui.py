@@ -64,8 +64,8 @@ class UserInterface:
           [sg.Combo([], size=(15, 1), key='joystick_sel')],
           [sg.Button('Refresh', key='refresh'), sg.Button('Accept', key='accept'), sg.Button('Exit', key='exit')]
         ]
-        sg.popup(popup_layout, title='Radio and joystick', )
-
+        # sg.popup(popup_layout, title='Radio and joystick', )
+        # popup_wnd 
         while True:
             event, values = this.wnd.read(timeout = 50)
             print(event)
