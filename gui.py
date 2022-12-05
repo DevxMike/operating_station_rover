@@ -43,6 +43,38 @@ class UserInterface:
             'USB_OK'   : 0,
             'PWR_OK'   : 0
         }
+
+        popup_layout = [
+          [sg.Text('Choose radio and joystick')],
+          [sg.Combo(['default'], size=(15, 1), key='radio_sel')],
+          [sg.Combo(['default'], size=(15, 1), key='joystick_sel')],
+          [sg.Button('Refresh', key='refresh'), sg.Button('Accept', key='accept'), sg.Button('Exit', key='exit')]
+        ]
+        # sg.popup(popup_layout, title='Radio and joystick', )
+        popup_wnd = sg.Window('Select radio and joystick', popup_layout, element_justification='r')
+        
+        vals_from_popup = {}
+
+        while True:
+            event, values = popup_wnd.read(timeout = 50)
+            # print(event)
+            # print(values)
+                # vals_from_popup.append(values)
+            if event in ('Quit', sg.WIN_CLOSED, 'exit'):
+                return -1
+            elif event == 'accept':
+                vals_from_popup = values
+                break
+            elif event == 'refresh':
+                pass 
+                # logic to refresh the list
+        
+        popup_wnd.close()
+
+        # print(type(vals_from_popup))
+        rs = vals_from_popup['radio_sel']
+        js = vals_from_popup['joystick_sel']
+
         this.layout['init'] = [
           [sg.Radio("Manual operation", 'operation_type', default = 'True'), sg.Radio("Automatic operation", 'operation_type')],
           [sg.Text('latitude'), sg.Input(size=(20, 1), key='in_latitude', disabled=True)],
@@ -51,24 +83,17 @@ class UserInterface:
           [sg.Table(values=[[[k], [v]] for k, v in this.table_values.items()], headings=headings, key='param_table', justification='left')],
           [sg.Button('Emergency Stop', key='stop_rover')],
           [sg.Text('Connection status'), LEDIndicator('con_stat', 30)],
+          [sg.Text(f'Radio: {rs}')],
+          [sg.Text(f'Joystick: {js}')],
           [sg.Image('./lrt_logo.png'), sg.Image('./weii_ang.png')]
         ]
 
-
-
         this.wnd = sg.Window('Operating station rev. 0.1.', this.layout['init'], element_justification='r')
 
-        popup_layout = [
-          [sg.Text('Choose radio and joystick')],
-          [sg.Combo([], size=(15, 1), key='radio_sel')],
-          [sg.Combo([], size=(15, 1), key='joystick_sel')],
-          [sg.Button('Refresh', key='refresh'), sg.Button('Accept', key='accept'), sg.Button('Exit', key='exit')]
-        ]
-        # sg.popup(popup_layout, title='Radio and joystick', )
-        # popup_wnd 
+        
         while True:
             event, values = this.wnd.read(timeout = 50)
-            print(event)
+            # print(event)
             SetLED(this.wnd, 'con_stat', 'red')
             if event in ('Quit', sg.WIN_CLOSED):
                 break
