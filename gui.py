@@ -6,32 +6,16 @@ kill_all_threads = False
 
 sg.theme('light blue 5')
 
-# class CruiseManager:
-#     def main(this, sem : Semaphore):
-#         global kill_all_threads
-#         while True:
-#             sem.acquire()
-#             if(kill_all_threads):
-#                 break
-#             print("acquired sem in CruiseManager")
+def LEDIndicator(key=None, radius=30):
+    return sg.Graph(canvas_size=(radius, radius),
+             graph_bottom_left=(-radius, -radius),
+             graph_top_right=(radius, radius),
+             pad=(0, 0), key=key)
 
-# class DiagManager:
-#     def main(this, sem : Semaphore):
-#         global kill_all_threads
-#         while True:
-#             sem.acquire()
-#             if(kill_all_threads):
-#                 break
-#             print("Acquired sem in DiagManager")
-
-# class ModeManager:
-#     def main(this, sem : Semaphore):
-#         global kill_all_threads 
-#         while True:
-#             sem.acquire()
-#             if(kill_all_threads):
-#                 break
-#             print("Acquired sem in ModeManager")
+def SetLED(window, key, color):
+    graph = window[key]
+    graph.erase()
+    graph.draw_circle((0, 0), 20, fill_color=color, line_color=color)
 
 import time
 
@@ -46,71 +30,49 @@ class UserInterface:
 
     def run(this, pipe_to_comm, args):
         global kill_all_threads
-
-        this.layout['init'] = [[sg.Text('Choose the radio port:', key='Header_text')],
-        #   [get_combo(args[0], (15, 1), 'radio_sel')],
-        #   [get_combo(args[1], (15, 1), 'radio_sel')],
-          [sg.Combo([], size=(15, 1), key='radio_sel')],
-          [sg.Combo([], size=(15, 1), key='joystick_sel')],
-          [sg.Radio("Manual operation", 'operation_type'), sg.Radio("Automatic operation", 'operation_type')],
-          [sg.Button('Refresh', key='refresh'), sg.Button('Accept', key='accept')],
-          [sg.Image('./lrt_logo.png'), sg.Image('./weii_ang.png')]          
+        headings = ['vehicle param', 'value']
+        this.table_values = {
+            'latitude' : 0,
+            'longitude': 0,
+            'roll'     : 0,
+            'yaw'      : 0,
+            'pitch'    : 0,
+            'AUTO'     : 0,
+            'IMU_OK'   : 0,
+            'GPS_OK'   : 0,
+            'USB_OK'   : 0,
+            'PWR_OK'   : 0
+        }
+        this.layout['init'] = [
+          [sg.Radio("Manual operation", 'operation_type', default = 'True'), sg.Radio("Automatic operation", 'operation_type')],
+          [sg.Text('latitude'), sg.Input(size=(20, 1), key='in_latitude', disabled=True)],
+          [sg.Text('longitude'), sg.Input(size=(20, 1), key='in_longitude', disabled=True)],
+          [sg.Button('Submit', key='sub_coords')],
+          [sg.Table(values=[[[k], [v]] for k, v in this.table_values.items()], headings=headings, key='param_table', justification='left')],
+          [sg.Button('Emergency Stop', key='stop_rover')],
+          [sg.Text('Connection status'), LEDIndicator('con_stat', 30)],
+          [sg.Image('./lrt_logo.png'), sg.Image('./weii_ang.png')]
         ]
 
 
-        this.wnd = sg.Window('Operating station rev. 0.1.', this.layout['init'], element_justification='c')
 
-        # this.mode_mgr = ModeManager()
-        # this.cruise_mgr = CruiseManager()
-        # this.diag_mgr = DiagManager()
+        this.wnd = sg.Window('Operating station rev. 0.1.', this.layout['init'], element_justification='r')
 
-        # mode_mgr_thread = Thread(target=this.mode_mgr.main, args=(this.update_mode,))
-        # cruise_mgr_thread = Thread(target=this.cruise_mgr.main, args=(this.update_cruise_data,))
-        # diag_mgr_thread = Thread(target=this.diag_mgr.main, args=(this.update_diag_data,))
-
-        # for sem in [this.update_cruise_data, this.update_diag_data, this.update_mode]:
-        #     sem.acquire()
-
-        # mode_mgr_thread.start()
-        # cruise_mgr_thread.start()
-        # diag_mgr_thread.start()
+        popup_layout = [
+          [sg.Text('Choose radio and joystick')],
+          [sg.Combo([], size=(15, 1), key='radio_sel')],
+          [sg.Combo([], size=(15, 1), key='joystick_sel')],
+          [sg.Button('Refresh', key='refresh'), sg.Button('Accept', key='accept'), sg.Button('Exit', key='exit')]
+        ]
+        sg.popup(popup_layout, title='Radio and joystick', )
 
         while True:
             event, values = this.wnd.read(timeout = 50)
             print(event)
-            
+            SetLED(this.wnd, 'con_stat', 'red')
             if event in ('Quit', sg.WIN_CLOSED):
                 break
-            # elif event not in ('__TIMEOUT__', None): # update to operation mode
-            #     # some logic to add 
-            #     this.devices_connected = True
-            #     this.wnd['radio_sel'].hide_row()
-            #     this.wnd['joystick_sel'].hide_row()
-
-            # elif event == 'Refresh':
-            #     pipe_to_comm.send([['get_ports']])
-            #     tmp = pipe_to_comm.recv()
-            #     this.wnd['radio_sel'].Update(values=tmp[0])
-            #     this.wnd['joystick_sel1'].Update(values=tmp[1])
-            # elif event == 'OK':
-            #     for sem in [this.update_cruise_data, this.update_diag_data, this.update_mode]:
-            #         sem.release()
-            #     dev = values['radio_sel']
-            #     joy = values['joystick_sel1']
-            #     pipe_to_comm.send([{'connect_radio': dev, 'connect_joystick' : joy}])
-            #     tmp = pipe_to_comm.recv()
-            #     if('radio_ok' in tmp):
-            #         sg.Popup(f'Connected with {dev}', keep_on_top=True)
-            #     if('radio_nok' in tmp):
-            #         sg.Popup(f'Could not connect to {dev}', keep_on_top=True)
-
-        # for sem in [this.update_cruise_data, this.update_diag_data, this.update_mode]:
-        #     sem.release()
-        # kill_all_threads = True
-        # mode_mgr_thread.join()
-        # cruise_mgr_thread.join()
-        # diag_mgr_thread.join()
-        # pipe_to_comm.send([['exit']])
-        # this.wnd.close()
+        
+        this.wnd.close()
 
 UserInterface().run(None, None)
