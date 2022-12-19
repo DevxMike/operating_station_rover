@@ -27,6 +27,52 @@ class Packet:
         )
         return header + self.message.encode("ascii")
 
+class dePacket:
+    def __init__(self, callback):
+        self.start = 0
+        self.message_type = 0
+        self.message_lenght = 0
+        self.crc = 0
+        self.payload = []
+        self.deserializer_state = 0
+        self.callback = callback
+        self.data_count = 0
+    # waiting_for_start = 0,
+    #     waiting_for_type = 1,
+    #     waiting_for_len = 2,
+    #     waiting_for_crc = 3,
+    #     data_acquisition = 4
+    def deserialize(self, data):
+        for i in range(len(data)):  
+            s = self.deserializer_state
+            tmp = data[i]
+            packet_start = 0x69
+
+            # case waiting_for_start:
+            if(s == 0):
+                if(tmp == packet_start):
+                    self.start = tmp
+                    self.deserializer_state = 1
+                    continue
+            
+            # case waiting_for_type:
+            if(s == 1):
+                self.message_type = tmp
+                self.deserializer_state = 2
+                continue
+
+            # case waiting_for_len:
+            if(s == 2):
+                self.data_count = 0
+                self.message_lenght = tmp
+                self.deserialize = 3
+                continue
+
+            
+
+
+
+
 def code_decode(packet):
     return bytes([byte ^ 0x69 for byte in packet])
 
