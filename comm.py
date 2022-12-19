@@ -36,7 +36,6 @@ class dePacket:
         self.payload = []
         self.deserializer_state = 0
         self.callback = callback
-        self.data_count = 0
     # waiting_for_start = 0,
     #     waiting_for_type = 1,
     #     waiting_for_len = 2,
@@ -52,27 +51,41 @@ class dePacket:
             if(s == 0):
                 if(tmp == packet_start):
                     self.start = tmp
+                    self.payload = []
                     self.deserializer_state = 1
-                    continue
+                    
             
             # case waiting_for_type:
-            if(s == 1):
+            elif(s == 1):
                 self.message_type = tmp
                 self.deserializer_state = 2
-                continue
+                
 
             # case waiting_for_len:
-            if(s == 2):
-                self.data_count = 0
+            elif(s == 2):
                 self.message_lenght = tmp
-                self.deserialize = 3
-                continue
-
+                self.deserializer_state = 3
+                
             
+            # case waiting_for_crc:
+            elif(s == 3):
+                self.crc = tmp
+                self.deserializer_state = 4
+            
+            # case data_acquisition:
+            elif(s == 4):
+                self.payload.append(tmp)
 
+            if(len(self.payload == self.message_lenght) and s == 4):
+                tmp_crc = (sum([ord(c) for c in self.payload]) + len(self.payload)) % 256
 
-
-
+                if(tmp_crc == self.crc):
+                    self.callback(self.type, self.payload)
+                
+                if(i > 0): 
+                    i -= 1
+                self.deserializer_state = 0
+                
 def code_decode(packet):
     return bytes([byte ^ 0x69 for byte in packet])
 
