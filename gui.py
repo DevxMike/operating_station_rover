@@ -100,4 +100,4 @@ class UserInterface:
         
         this.wnd.close()
 
-UserInterface().run(None, None)
+# UserInterface().run(None, None)
