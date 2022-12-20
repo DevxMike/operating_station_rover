@@ -31,6 +31,9 @@ class Packet:
         )
         return header + self.message.encode("ascii")
 
+def code_decode(packet):
+    return bytes([byte ^ 0x69 for byte in packet])
+
 class dePacket:
     def __init__(self, callback):
         self.start = 0
@@ -47,8 +50,11 @@ class dePacket:
     #     data_acquisition = 4
     def deserialize(self, data):
         for i in range(len(data)):  
+            # tmp = data[i]
             s = self.deserializer_state
-            tmp = data[i]
+            # print(f"{tmp}, {type(tmp)}")
+            tmp = ord(data[i]) ^ 0x69
+
             packet_start = 0x69
 
             # case waiting_for_start:
@@ -92,8 +98,7 @@ class dePacket:
                 self.deserializer_state = 0
 
 
-def code_decode(packet):
-    return bytes([byte ^ 0x69 for byte in packet])
+
 
 class communication:
     devices = dict()
@@ -116,6 +121,8 @@ class communication:
             return True
         except:
             return False
+
+        
     
     def send_data_over_radio(this, data, type):
         try:
@@ -124,9 +131,13 @@ class communication:
         except:
             pass
 
-    def read_data_over_radio(this, packet):
+    def read_data_over_radio(this):
         try:
-            this.radio.write(code_decode(packet))
+            if(this.radio.inWaiting() > 0):
+                return this.radio.read(1)
+            else:
+                return None
+            # this.radio.write(code_decode(packet))
         except:
             return None
 
@@ -150,10 +161,9 @@ def callback(type, payload):
     global communicates
     global states
     global refresh_gui
-
+    print('hello')
     if(type == 0):
-        tmp = Packet(0, '')
-        communicates.put_nowait(tmp.get_packet)
+        communicates.put_nowait({'type' : 0, 'payload' : ''})
     
     elif(type == 7 or type == 2):
         states['diag'] = payload
@@ -199,12 +209,14 @@ def joystick_process(pipe, joystick):
                 break
         # time.sleep(0.01)
 
+mode = 'man'
 
 def run_com():
     global communicates
     global states
     global refresh_gui
-    
+    global mode
+
     comm = communication()
     joysticks = get_joysticks()
     ports = comm.get_ports()
@@ -239,9 +251,28 @@ def run_com():
     controller_process.start()
     comm.send_data_over_radio('', 0)
     deserializer = dePacket(callback)
+    
+    coords = {
+        'longitude' : 0,
+        'latitude' : 0
+    }
 
+    
+    
     while True:
+        read_data = []
+        while True:
+            tmp = comm.read_data_over_radio()
+            if(tmp != None):
+                read_data.append(tmp)
+            else:
+                break
+        
+        deserializer.deserialize(read_data)
 
+        while not communicates.empty():
+            tmp = communicates.get()
+            comm.send_data_over_radio(tmp['payload'], tmp['type'])
 
         if(refresh_gui):
             # logic to refresh gui info
@@ -256,12 +287,22 @@ def run_com():
                 comm.close_radio_connection()
                 break
 
+            elif('manual' in tmp['gui_requests']):
+                mode = 'man'
+            
+            elif('auto' in tmp['gui_requests']):
+                mode = 'auto'
+                coords['latitude'] = float(tmp['gui_requests'][1])
+                coords['longitude'] = float(tmp['gui_requests'][2])
+                print(coords)
+
         if(comm_pipe_to_joy.poll(0.005)):
             tmp = comm_pipe_to_joy.recv()
-            for p in tmp:
-                print(p.get_packet())
+            # for p in tmp:
+            #     print(p.get_packet())
+            pass
         
-        
+        print(mode)
         # while not communicates.empty():
         #     print(communicates.get())
 

@@ -84,10 +84,10 @@ class UserInterface:
         js = vals_from_popup['joystick_sel']
 
         this.layout['init'] = [
-          [sg.Radio("Manual operation", 'operation_type', default = 'True'), sg.Radio("Automatic operation", 'operation_type')],
+          [sg.Radio("Manual operation", 'operation_type', default = 'True', key='manual'), sg.Radio("Automatic operation", 'operation_type', key='auto')],
           [sg.Text('latitude'), sg.Input(size=(20, 1), key='in_latitude', disabled=True)],
           [sg.Text('longitude'), sg.Input(size=(20, 1), key='in_longitude', disabled=True)],
-          [sg.Button('Submit', key='sub_coords')],
+          [sg.Button('Submit', key='sub_mode')],
           [sg.Table(values=[[[k], [v]] for k, v in this.table_values.items()], headings=headings, key='param_table', justification='left')],
           [sg.Button('Emergency Stop', key='stop_rover')],
           [sg.Text('Connection status'), LEDIndicator('con_stat', 30)],
@@ -101,11 +101,24 @@ class UserInterface:
         
         while True:
             event, values = this.wnd.read(timeout = 50)
+            print(event)
             # print(event)
             SetLED(this.wnd, 'con_stat', 'red')
             if event in ('Quit', sg.WIN_CLOSED):
                 pipe_to_comm.send({'gui_requests' : ['EXIT']})
                 break
+            if(values['manual'] == True):
+                this.wnd['in_latitude'].update(disabled = True)
+                this.wnd['in_longitude'].update(disabled = True)
+            elif(values['auto'] == True):
+                this.wnd['in_latitude'].update(disabled = False)
+                this.wnd['in_longitude'].update(disabled = False)
+            
+            if('sub_mode' in event):
+                if(values['manual'] == True):
+                    pipe_to_comm.send({'gui_requests' : ['manual']})
+                else:
+                    pipe_to_comm.send({'gui_requests' : ['auto', values['in_latitude'], values['in_longitude']]})
         
         this.wnd.close()
 
