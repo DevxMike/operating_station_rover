@@ -86,7 +86,7 @@ class dePacket:
             elif(s == 4):
                 self.payload.append(tmp)
 
-            print(f'{len(self.payload)}, {self.message_lenght}, {self.deserializer_state }, {tmp}')
+            # print(f'{len(self.payload)}, {self.message_lenght}, {self.deserializer_state }, {tmp}')
             if(len(self.payload) == self.message_lenght and self.deserializer_state == 4):
                 tmp_crc = (sum([ord(c) for c in str(bytes(self.payload), 'utf-8')]) + len(self.payload)) % 256
 
@@ -154,7 +154,11 @@ def get_joysticks():
     return tmp
 
 communicates = queue.Queue(512)
-states = {}
+states = {
+    'diag' : [],
+    'GPS'  : [],
+    'IMU'  : []
+}
 refresh_gui = False
 
 def callback(type, payload):
@@ -209,13 +213,18 @@ def joystick_process(pipe, joystick):
                 break
         # time.sleep(0.01)
 
+def time_ms():
+    return int(time.time() * 1000)
+
 mode = 'man'
+millis = 0
 
 def run_com():
     global communicates
     global states
     global refresh_gui
     global mode
+    global millis 
 
     comm = communication()
     joysticks = get_joysticks()
@@ -257,10 +266,20 @@ def run_com():
         'latitude' : 0
     }
 
-    
+    millis = time_ms()
     
     while True:
         read_data = []
+
+        if(time_ms() - millis > 500):
+            comm.send_data_over_radio('', 7)
+            comm.send_data_over_radio('', 8)
+            if(mode == 'man'):
+                comm.send_data_over_radio('M', 5)
+            else:
+                comm.send_data_over_radio('A', 5)
+            millis = time_ms()
+
         while True:
             tmp = comm.read_data_over_radio()
             if(tmp != None):
@@ -275,7 +294,7 @@ def run_com():
             comm.send_data_over_radio(tmp['payload'], tmp['type'])
 
         if(refresh_gui):
-            # logic to refresh gui info
+            comm_pipe_to_gui.send({'comm_refresh_request' : states})
             refresh_gui = False
             pass
         
@@ -298,11 +317,12 @@ def run_com():
 
         if(comm_pipe_to_joy.poll(0.005)):
             tmp = comm_pipe_to_joy.recv()
-            # for p in tmp:
-            #     print(p.get_packet())
-            pass
+            for p in tmp:
+                # comm.send_data_over_radio(p.message, p.message_type)
+                # print(f'{p.message}, {p.message_type}')
+                pass
         
-        print(mode)
+        # print(mode)
         # while not communicates.empty():
         #     print(communicates.get())
 

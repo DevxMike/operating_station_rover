@@ -119,6 +119,34 @@ class UserInterface:
                     pipe_to_comm.send({'gui_requests' : ['manual']})
                 else:
                     pipe_to_comm.send({'gui_requests' : ['auto', values['in_latitude'], values['in_longitude']]})
+            
+            if(pipe_to_comm.poll(0.005)):
+                tmp = pipe_to_comm.recv()
+                if('comm_refresh_request' in tmp):
+                    diag = tmp['comm_refresh_request']['diag']
+                    GPS = tmp['comm_refresh_request']['GPS']
+                    IMU = tmp['comm_refresh_request']['IMU']
+                    diag = ''.join([chr(x) for x in diag])
+                    GPS = ''.join([chr(x) for x in GPS])
+                    IMU = ''.join([chr(x) for x in IMU])
+
+                    diag = diag.split(',')
+                    GPS = GPS.split(',')
+                    IMU = IMU.split(',')
+                    
+                    this.table_values['latitude'] = float(GPS[1][5:len(GPS[1])])
+                    this.table_values['longitude'] = float(GPS[0][4:len(GPS[0])])
+                    this.table_values['yaw'] = float(IMU[0][2:len(IMU[0])])
+                    this.table_values['pitch'] = float(IMU[1][2:len(IMU[1])])
+                    this.table_values['roll'] = float(IMU[2][2:len(IMU[2])])
+                    this.table_values['AUTO'] = diag[0][len(diag[0]) - 1]
+                    this.table_values['IMU_OK'] = diag[1][len(diag[1]) - 1]
+                    this.table_values['GPS_OK'] = diag[2][len(diag[2]) - 1]
+                    this.table_values['USB_OK'] = diag[3][len(diag[3]) - 1]
+                    this.table_values['PWR_OK'] = diag[4][len(diag[4]) - 3]
+
+                    this.wnd['param_table'].update(values=[[[k], [v]] for k, v in this.table_values.items()])
+                    print(f'{diag} {IMU} {GPS}')
         
         this.wnd.close()
 
