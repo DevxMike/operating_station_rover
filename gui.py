@@ -46,8 +46,8 @@ class UserInterface:
 
         popup_layout = [
           [sg.Text('Choose radio and joystick')],
-          [sg.Combo(['default'], size=(15, 1), key='radio_sel')],
-          [sg.Combo(['default'], size=(15, 1), key='joystick_sel')],
+          [sg.Combo(args[0], size=(15, 1), key='radio_sel')],
+          [sg.Combo(args[1], size=(15, 1), key='joystick_sel')],
           [sg.Button('Refresh', key='refresh'), sg.Button('Accept', key='accept'), sg.Button('Exit', key='exit')]
         ]
         # sg.popup(popup_layout, title='Radio and joystick', )
@@ -60,13 +60,21 @@ class UserInterface:
             # print(event)
             # print(values)
                 # vals_from_popup.append(values)
+            if(pipe_to_comm.poll(0.001)):
+                tmp = pipe_to_comm.recv()
+                radio = tmp['radio']
+                joy = tmp['joystick']
+                popup_wnd['radio_sel'].update(values=radio)
+                popup_wnd['joystick_sel'].update(values=joy)
+
             if event in ('Quit', sg.WIN_CLOSED, 'exit'):
                 return -1
             elif event == 'accept':
                 vals_from_popup = values
+                pipe_to_comm.send({'gui_requests' : ['connect'], 'params' : [vals_from_popup['radio_sel'], vals_from_popup['joystick_sel']]})
                 break
             elif event == 'refresh':
-                pass 
+                pipe_to_comm.send({'gui_requests' : ['refresh']})
                 # logic to refresh the list
         
         popup_wnd.close()
@@ -83,8 +91,8 @@ class UserInterface:
           [sg.Table(values=[[[k], [v]] for k, v in this.table_values.items()], headings=headings, key='param_table', justification='left')],
           [sg.Button('Emergency Stop', key='stop_rover')],
           [sg.Text('Connection status'), LEDIndicator('con_stat', 30)],
-          [sg.Text(f'Radio: {rs}')],
-          [sg.Text(f'Joystick: {js}')],
+          [sg.Text(f'Radio: {rs[0]}')],
+          [sg.Text(f'Joystick: {js[0]}')],
           [sg.Image('./lrt_logo.png'), sg.Image('./weii_ang.png')]
         ]
 
@@ -96,6 +104,7 @@ class UserInterface:
             # print(event)
             SetLED(this.wnd, 'con_stat', 'red')
             if event in ('Quit', sg.WIN_CLOSED):
+                pipe_to_comm.send({'gui_requests' : ['EXIT']})
                 break
         
         this.wnd.close()

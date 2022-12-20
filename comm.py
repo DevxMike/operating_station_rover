@@ -5,7 +5,7 @@ import serial
 from struct import pack, unpack
 from serial.tools import list_ports
 from sympy import false
-import gui
+from gui import UserInterface 
 import numpy as np
 import pygame
 import math
@@ -137,7 +137,10 @@ class communication:
             pass
 
 def get_joysticks():
-    return [pygame.joystick.Joystick(x).get_name() for x in range(pygame.joystick.get_count())]
+    pygame.init()
+    tmp = [pygame.joystick.Joystick(x).get_name() for x in range(pygame.joystick.get_count())]
+    pygame.quit()
+    return tmp
 
 communicates = queue.Queue(512)
 states = {}
@@ -165,13 +168,12 @@ def callback(type, payload):
         refresh_gui = True
 
 def joystick_process(pipe, joystick):
-    global communicates
     axes = [0.0] * joystick.get_numaxes()
     buttons = [False] * joystick.get_numbuttons()
     reg = regulator()
 
     while True:
-        event = pygame.event.wait()
+        event = pygame.event.wait(5)
         if event.type == pygame.JOYAXISMOTION:
                e = event.dict
                axes[e["axis"]] = e["value"]
@@ -187,55 +189,87 @@ def joystick_process(pipe, joystick):
         hat_readings = translate_hat(joystick.get_hat(0))
 
         tmp1 = Packet(1, f'D{u1_val},{u2_val}')
-        # communicates.put_nowait(tmp1.get_packet())
 
         tmp2 = Packet(1, f'C{hat_readings}')
-        # communicates.put_nowait(tmp2.get_packet())
 
         pipe.send([tmp1, tmp2])
-
-        time.sleep(0.005)
-
-
-
+        if(pipe.poll(0.005)):
+            tmp = pipe.recv()
+            if('EXIT' in tmp):
+                break
+        # time.sleep(0.01)
 
 
 def run_com():
     global communicates
     global states
     global refresh_gui
-    pygame.init()
-    pygame.joystick.init()
-    controller = pygame.joystick.Joystick(0)
-    controller.init()
-    # comm = communication()
-    # joysticks = get_joysticks()
-    # ports = comm.get_ports()
+    
+    comm = communication()
+    joysticks = get_joysticks()
+    ports = comm.get_ports()
     # user_interface = gui.UserInterface()
-    # comm_pipe_to_gui, gui_pipe = multiprocessing.Pipe()  
-    # gui_process = multiprocessing.Process(target=user_interface.run, args=(gui_pipe,([ports], [joysticks])))
+    comm_pipe_to_gui, gui_pipe = multiprocessing.Pipe()  
+    gui_process = multiprocessing.Process(target=UserInterface().run, args=(gui_pipe,[[ports], [joysticks]]))
     comm_pipe_to_joy, joy_pipe = multiprocessing.Pipe()  
-    controller_process = multiprocessing.Process(target = joystick_process, args=(joy_pipe,controller))
-    # gui_process.start()
-    controller_process.start()
+    
+    gui_process.start()
 
     while True:
+        if(comm_pipe_to_gui.poll(0.01)):
+            tmp = comm_pipe_to_gui.recv()
+            if('connect' in tmp['gui_requests']):
+                # params = tmp['params']
+                print(tmp['params'])
+                joysticks_available = get_joysticks()
+                print(tmp['params'][1][0])
+                pygame.init()
+                pygame.joystick.init()
+                index_of_joystick = joysticks_available.index(tmp['params'][1][0])
+                controller = pygame.joystick.Joystick(index_of_joystick)
+                controller.init()
+                comm.get_radio_connection(tmp['params'][0][0])
+                break 
+            
+            elif('refresh' in tmp['gui_requests']):
+                comm_pipe_to_gui.send({'radio' : comm.get_ports(), 'joystick' : get_joysticks()})
+                # print('refresh')
+
+    controller_process = multiprocessing.Process(target = joystick_process, args=(joy_pipe,controller))
+    controller_process.start()
+    comm.send_data_over_radio('', 0)
+    deserializer = dePacket(callback)
+
+    while True:
+
+
         if(refresh_gui):
             # logic to refresh gui info
             refresh_gui = False
             pass
         
+        if(comm_pipe_to_gui.poll(0.001)):
+            tmp = comm_pipe_to_gui.recv()
+            if('EXIT' in tmp['gui_requests']):
+                comm_pipe_to_joy.send('EXIT')
+                controller_process.join()
+                comm.close_radio_connection()
+                break
+
         if(comm_pipe_to_joy.poll(0.005)):
             tmp = comm_pipe_to_joy.recv()
             for p in tmp:
                 print(p.get_packet())
+        
+        
         # while not communicates.empty():
         #     print(communicates.get())
 
         #logic to get joystick readings in man mode
-        
         # msg = []
         # if(comm_pipe_to_gui.poll(0.001)):
         #     msg = comm_pipe_to_gui.recv()
 
+        # comm_pipe_to_joy.send('EXIT')
+        # controller_process.join()
 run_com()
