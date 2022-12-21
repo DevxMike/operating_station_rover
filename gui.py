@@ -163,6 +163,9 @@ class UserInterface:
                         print(f'{diag} {IMU} {GPS}')
                     except:
                         pass
+                
+                # if('comm_status_refresh' in tmp):
+                #     SetLED(this.wnd, 'con_stat', tmp['comm_status_refresh'])
         
         this.wnd.close()
 

@@ -153,7 +153,12 @@ def get_joysticks():
     pygame.quit()
     return tmp
 
+def time_ms():
+    return int(time.time() * 1000)
+
 communicates = queue.Queue(512)
+com_timeout = time_ms()
+
 states = {
     'diag' : [],
     'GPS'  : [],
@@ -167,6 +172,7 @@ def callback(type, payload):
     global refresh_gui
     if(type == 0):
         communicates.put_nowait({'type' : 0, 'payload' : ''})
+        com_timeout = time_ms()
     
     elif(type == 7 or type == 2):
         states['diag'] = payload
@@ -212,11 +218,13 @@ def joystick_process(pipe, joystick):
                 break
         # time.sleep(0.01)
 
-def time_ms():
-    return int(time.time() * 1000)
-
 mode = 'man'
 millis = 0
+
+coords = {
+        'longitude' : 0,
+        'latitude' : 0
+    }
 
 def run_com():
     global communicates
@@ -224,6 +232,8 @@ def run_com():
     global refresh_gui
     global mode
     global millis 
+    global coords
+    global com_timeout
 
     comm = communication()
     joysticks = get_joysticks()
@@ -259,14 +269,9 @@ def run_com():
     controller_process.start()
     comm.send_data_over_radio('', 0)
     deserializer = dePacket(callback)
-    
-    coords = {
-        'longitude' : 0,
-        'latitude' : 0
-    }
 
     millis = time_ms()
-    
+    # 100 - coords
     while True:
         read_data = []
 
@@ -277,6 +282,9 @@ def run_com():
                 comm.send_data_over_radio('M', 5)
             else:
                 comm.send_data_over_radio('A', 5)
+                lon = coords['longitude']
+                lat = coords['latitude']
+                comm.send_data_over_radio(f'lon:{lon},lat:{lat}', 100)
             millis = time_ms()
 
         while True:
@@ -317,19 +325,14 @@ def run_com():
         if(comm_pipe_to_joy.poll(0.005)):
             tmp = comm_pipe_to_joy.recv()
             for p in tmp:
-                # comm.send_data_over_radio(p.message, p.message_type)
-                # print(f'{p.message}, {p.message_type}')
-                pass
+                if(mode == 'man'):
+                    print(f'{p.message}, {p.message_type}')
+                else:
+                    pass
         
-        # print(mode)
-        # while not communicates.empty():
-        #     print(communicates.get())
+        # if(time_ms() - com_timeout < 5000):
+        #     comm_pipe_to_gui.send({'comm_status_refresh' : 'green'})
+        # else:
+        #     comm_pipe_to_gui.send({'comm_status_refresh' : 'red'})
 
-        #logic to get joystick readings in man mode
-        # msg = []
-        # if(comm_pipe_to_gui.poll(0.001)):
-        #     msg = comm_pipe_to_gui.recv()
-
-        # comm_pipe_to_joy.send('EXIT')
-        # controller_process.join()
 run_com()
