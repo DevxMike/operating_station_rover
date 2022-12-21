@@ -1,5 +1,6 @@
 from multiprocessing import Process, Pipe
 from threading import Thread, Semaphore
+from turtle import home
 import PySimpleGUI as sg
 
 kill_all_threads = False
@@ -17,19 +18,19 @@ def SetLED(window, key, color):
     graph.erase()
     graph.draw_circle((0, 0), 20, fill_color=color, line_color=color)
 
-import time
+home_coords = {
+    'longitude' : 0.0,
+    'latitude'  : 0.0
+}
 
 class UserInterface:
-    update_cruise_data = Semaphore(1)
-    update_diag_data = Semaphore(1)
-    update_mode = Semaphore(1)
-
     layout = dict()
 
     devices_connected = False
 
     def run(this, pipe_to_comm, args):
-        global kill_all_threads
+        global home_coords
+
         headings = ['vehicle param', 'value']
         this.table_values = {
             'latitude' : 0,
@@ -89,7 +90,7 @@ class UserInterface:
           [sg.Text('longitude'), sg.Input(size=(20, 1), key='in_longitude', disabled=True)],
           [sg.Button('Submit', key='sub_mode')],
           [sg.Table(values=[[[k], [v]] for k, v in this.table_values.items()], headings=headings, key='param_table', justification='left')],
-          [sg.Button('Emergency Stop', key='stop_rover')],
+          [sg.Button('Set home', key='save_coords'), sg.Button('Emergency Stop', key='stop_rover')],
           [sg.Text('Connection status'), LEDIndicator('con_stat', 30)],
           [sg.Text(f'Radio: {rs[0]}')],
           [sg.Text(f'Joystick: {js[0]}')],
@@ -97,7 +98,6 @@ class UserInterface:
         ]
 
         this.wnd = sg.Window('Operating station rev. 0.1.', this.layout['init'], element_justification='r')
-
         
         while True:
             event, values = this.wnd.read(timeout = 50)
@@ -120,33 +120,49 @@ class UserInterface:
                 else:
                     pipe_to_comm.send({'gui_requests' : ['auto', values['in_latitude'], values['in_longitude']]})
             
+            if('save_coords' in event):
+                home_coords['longitude'] = float(this.table_values['longitude'])
+                home_coords['latitude'] = float(this.table_values['latitude'])
+
+            if('stop_rover' in event):
+                pipe_to_comm.send({'gui_requests' : ['auto', home_coords['latitude'], home_coords['longitude']]})
+                this.wnd['in_latitude'].update(disabled = False)
+                this.wnd['in_longitude'].update(disabled = False)
+                this.wnd['auto'].update(value = True)
+                this.wnd['in_latitude'].update(value = home_coords['latitude'])
+                this.wnd['in_longitude'].update(value = home_coords['longitude'])
+
+
             if(pipe_to_comm.poll(0.005)):
                 tmp = pipe_to_comm.recv()
                 if('comm_refresh_request' in tmp):
                     diag = tmp['comm_refresh_request']['diag']
                     GPS = tmp['comm_refresh_request']['GPS']
                     IMU = tmp['comm_refresh_request']['IMU']
-                    diag = ''.join([chr(x) for x in diag])
-                    GPS = ''.join([chr(x) for x in GPS])
-                    IMU = ''.join([chr(x) for x in IMU])
+                    try:
+                        diag = ''.join([chr(x) for x in diag])
+                        GPS = ''.join([chr(x) for x in GPS])
+                        IMU = ''.join([chr(x) for x in IMU])
 
-                    diag = diag.split(',')
-                    GPS = GPS.split(',')
-                    IMU = IMU.split(',')
-                    
-                    this.table_values['latitude'] = float(GPS[1][5:len(GPS[1])])
-                    this.table_values['longitude'] = float(GPS[0][4:len(GPS[0])])
-                    this.table_values['yaw'] = float(IMU[0][2:len(IMU[0])])
-                    this.table_values['pitch'] = float(IMU[1][2:len(IMU[1])])
-                    this.table_values['roll'] = float(IMU[2][2:len(IMU[2])])
-                    this.table_values['AUTO'] = diag[0][len(diag[0]) - 1]
-                    this.table_values['IMU_OK'] = diag[1][len(diag[1]) - 1]
-                    this.table_values['GPS_OK'] = diag[2][len(diag[2]) - 1]
-                    this.table_values['USB_OK'] = diag[3][len(diag[3]) - 1]
-                    this.table_values['PWR_OK'] = diag[4][len(diag[4]) - 3]
+                        diag = diag.split(',')
+                        GPS = GPS.split(',')
+                        IMU = IMU.split(',')
+                        
+                        this.table_values['latitude'] = float(GPS[1][5:len(GPS[1])])
+                        this.table_values['longitude'] = float(GPS[0][4:len(GPS[0])])
+                        this.table_values['yaw'] = float(IMU[0][2:len(IMU[0])])
+                        this.table_values['pitch'] = float(IMU[1][2:len(IMU[1])])
+                        this.table_values['roll'] = float(IMU[2][2:len(IMU[2])])
+                        this.table_values['AUTO'] = diag[0][len(diag[0]) - 1]
+                        this.table_values['IMU_OK'] = diag[1][len(diag[1]) - 1]
+                        this.table_values['GPS_OK'] = diag[2][len(diag[2]) - 1]
+                        this.table_values['USB_OK'] = diag[3][len(diag[3]) - 1]
+                        this.table_values['PWR_OK'] = diag[4][len(diag[4]) - 3]
 
-                    this.wnd['param_table'].update(values=[[[k], [v]] for k, v in this.table_values.items()])
-                    print(f'{diag} {IMU} {GPS}')
+                        this.wnd['param_table'].update(values=[[[k], [v]] for k, v in this.table_values.items()])
+                        print(f'{diag} {IMU} {GPS}')
+                    except:
+                        pass
         
         this.wnd.close()
 

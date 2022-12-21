@@ -165,7 +165,6 @@ def callback(type, payload):
     global communicates
     global states
     global refresh_gui
-    print('hello')
     if(type == 0):
         communicates.put_nowait({'type' : 0, 'payload' : ''})
     
