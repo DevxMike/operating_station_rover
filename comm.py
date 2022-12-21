@@ -157,7 +157,7 @@ def time_ms():
     return int(time.time() * 1000)
 
 communicates = queue.Queue(512)
-com_timeout = time_ms()
+# com_timeout = time_ms()
 
 states = {
     'diag' : [],
@@ -170,9 +170,11 @@ def callback(type, payload):
     global communicates
     global states
     global refresh_gui
+    # global com_timeout
+
     if(type == 0):
         communicates.put_nowait({'type' : 0, 'payload' : ''})
-        com_timeout = time_ms()
+        # com_timeout = time_ms()
     
     elif(type == 7 or type == 2):
         states['diag'] = payload
@@ -271,13 +273,17 @@ def run_com():
     deserializer = dePacket(callback)
 
     millis = time_ms()
+    # millis_timeout = time_ms()
+
     # 100 - coords
+    # 101 - motors 
     while True:
         read_data = []
 
         if(time_ms() - millis > 500):
             comm.send_data_over_radio('', 7)
             comm.send_data_over_radio('', 8)
+            millis = time_ms()
             if(mode == 'man'):
                 comm.send_data_over_radio('M', 5)
             else:
@@ -285,7 +291,14 @@ def run_com():
                 lon = coords['longitude']
                 lat = coords['latitude']
                 comm.send_data_over_radio(f'lon:{lon},lat:{lat}', 100)
-            millis = time_ms()
+
+            
+        # if(time_ms() - millis_timeout > 5):
+        #     millis_timeout = time_ms()
+        #     if(time_ms() - com_timeout < 5000):
+        #         comm_pipe_to_gui.send({'comm_status_refresh' : 'green'})
+        #     else:
+        #         comm_pipe_to_gui.send({'comm_status_refresh' : 'red'})
 
         while True:
             tmp = comm.read_data_over_radio()
@@ -326,13 +339,11 @@ def run_com():
             tmp = comm_pipe_to_joy.recv()
             for p in tmp:
                 if(mode == 'man'):
+                    comm.send_data_over_radio(p.message, 101)
                     print(f'{p.message}, {p.message_type}')
                 else:
                     pass
         
-        # if(time_ms() - com_timeout < 5000):
-        #     comm_pipe_to_gui.send({'comm_status_refresh' : 'green'})
-        # else:
-        #     comm_pipe_to_gui.send({'comm_status_refresh' : 'red'})
+        
 
 run_com()

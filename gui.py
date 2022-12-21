@@ -91,7 +91,7 @@ class UserInterface:
           [sg.Button('Submit', key='sub_mode')],
           [sg.Table(values=[[[k], [v]] for k, v in this.table_values.items()], headings=headings, key='param_table', justification='left')],
           [sg.Button('Set home', key='save_coords'), sg.Button('Emergency Stop', key='stop_rover')],
-          [sg.Text('Connection status'), LEDIndicator('con_stat', 30)],
+        #   [sg.Text('Connection status'), LEDIndicator('con_stat', 30)],
           [sg.Text(f'Radio: {rs[0]}')],
           [sg.Text(f'Joystick: {js[0]}')],
           [sg.Image('./lrt_logo.png'), sg.Image('./weii_ang.png')]
@@ -103,7 +103,7 @@ class UserInterface:
             event, values = this.wnd.read(timeout = 50)
             print(event)
             # print(event)
-            SetLED(this.wnd, 'con_stat', 'red')
+            # SetLED(this.wnd, 'con_stat', 'red')
             if event in ('Quit', sg.WIN_CLOSED):
                 pipe_to_comm.send({'gui_requests' : ['EXIT']})
                 break
