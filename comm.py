@@ -88,10 +88,12 @@ class dePacket:
 
             # print(f'{len(self.payload)}, {self.message_lenght}, {self.deserializer_state }, {tmp}')
             if(len(self.payload) == self.message_lenght and self.deserializer_state == 4):
-                tmp_crc = (sum([ord(c) for c in str(bytes(self.payload), 'utf-8')]) + len(self.payload)) % 256
-
-                if(tmp_crc == self.crc):
-                    self.callback(self.message_type, self.payload)
+                try:
+                    tmp_crc = (sum([ord(c) for c in str(bytes(self.payload), 'utf-8')]) + len(self.payload)) % 256
+                    if(tmp_crc == self.crc):
+                        self.callback(self.message_type, self.payload)
+                except:
+                    pass
                 
                 if(i > 0): 
                     i -= 1
@@ -116,7 +118,7 @@ class communication:
 
     def get_radio_connection(this, name):
         try:
-            this.radio = serial.Serial(this.devices[name])
+            this.radio = serial.Serial(this.devices[name], 38400)
             this.radio_alive = True
             return True
         except:
@@ -133,10 +135,12 @@ class communication:
 
     def read_data_over_radio(this):
         try:
-            if(this.radio.inWaiting() > 0):
-                return this.radio.read(1)
-            else:
-                return None
+            for i in range(50):
+                if(this.radio.inWaiting() > 0):
+                    return this.radio.read(1)
+                else:
+                    pass
+            return None
             # this.radio.write(code_decode(packet))
         except:
             return None
@@ -166,14 +170,37 @@ states = {
 }
 refresh_gui = False
 
+def translate_drive(data):
+    ctrl = {
+        'left' : 0,
+        'right': 0,
+        'cam'  : 0
+    }
+
+    tmp = data.split(',')
+    if(len(tmp) == 1):
+        ctrl['cam'] = int(tmp[0][1])
+    elif(len(tmp) == 2):
+        ctrl['left'] = int(tmp[0][1:]) * 1000
+        ctrl['right'] = int(tmp[1]) * 1000 
+
+        if(ctrl['left'] > 0):
+            ctrl['left'] -= 1
+        if(ctrl['right'] > 0):
+            ctrl['right'] -= 1
+        
+
+    print(ctrl)
+    return ctrl
+
 def callback(type, payload):
     global communicates
     global states
     global refresh_gui
     # global com_timeout
-
+    # print(payload)
     if(type == 0):
-        communicates.put_nowait({'type' : 0, 'payload' : ''})
+        communicates.put({'type' : 0, 'payload' : ''})
         # com_timeout = time_ms()
     
     elif(type == 7 or type == 2):
@@ -194,7 +221,7 @@ def joystick_process(pipe, joystick):
     reg = regulator()
 
     while True:
-        event = pygame.event.wait(5)
+        event = pygame.event.wait(30)
         if event.type == pygame.JOYAXISMOTION:
                e = event.dict
                axes[e["axis"]] = e["value"]
@@ -208,13 +235,35 @@ def joystick_process(pipe, joystick):
 
         u1_val, u2_val = reg(x1_val, x2_val, x3_val)
         hat_readings = translate_hat(joystick.get_hat(0))
+        # tmp = translate_drive(f'D,{int(u1_val)},{int(u2_val)}')
+        # u1_val = tmp['left']
+        # u2_val = tmp['right']
+        # tmp1 = Packet(1, f'D,{int(u1_val)},{int(u2_val)}')
+        # tmp = translate_drive(f'C,{int(hat_readings)}')
+        # cam = tmp['cam']
+        # tmp2 = Packet(1, f'C,{int(cam)}')
+        pwm_left = int(u1_val * 10)
+        pwm_right = int(u2_val * 10)
 
-        tmp1 = Packet(1, f'D{u1_val},{u2_val}')
 
-        tmp2 = Packet(1, f'C{hat_readings}')
+        result = []
 
-        pipe.send([tmp1, tmp2])
-        if(pipe.poll(0.005)):
+        result.append(Packet(101, f'L,{pwm_left},R,{pwm_right}'))
+
+        flags = hat_readings
+
+        if(flags & 8):
+            result.append(Packet(101,'D,F')) # RIGHT
+        if(flags & 4):
+            result.append(Packet(101,'D,R')) # LEFT
+        if(flags & 2):
+            result.append(Packet(101,'S,+')) # UP
+        if(flags & 1):
+            result.append(Packet(101,'S,-')) # DOWN
+        
+        # print(result)
+        pipe.send(result)
+        if(pipe.poll(0.001)):
             tmp = pipe.recv()
             if('EXIT' in tmp):
                 break
@@ -235,7 +284,8 @@ def run_com():
     global mode
     global millis 
     global coords
-    global com_timeout
+    timeout = time_ms()
+    i = 0
 
     comm = communication()
     joysticks = get_joysticks()
@@ -248,7 +298,7 @@ def run_com():
     gui_process.start()
 
     while True:
-        if(comm_pipe_to_gui.poll(0.01)):
+        if(comm_pipe_to_gui.poll(0.001)):
             tmp = comm_pipe_to_gui.recv()
             if('connect' in tmp['gui_requests']):
                 # params = tmp['params']
@@ -280,7 +330,7 @@ def run_com():
     while True:
         read_data = []
 
-        if(time_ms() - millis > 500):
+        if(time_ms() - millis > 700):
             comm.send_data_over_radio('', 7)
             comm.send_data_over_radio('', 8)
             millis = time_ms()
@@ -290,7 +340,7 @@ def run_com():
                 comm.send_data_over_radio('A', 5)
                 lon = coords['longitude']
                 lat = coords['latitude']
-                comm.send_data_over_radio(f'lon:{lon},lat:{lat}', 100)
+                comm.send_data_over_radio(f'{lon},{lat}', 100)
 
             
         # if(time_ms() - millis_timeout > 5):
@@ -310,7 +360,7 @@ def run_com():
         deserializer.deserialize(read_data)
 
         while not communicates.empty():
-            tmp = communicates.get()
+            tmp = communicates.get_nowait()
             comm.send_data_over_radio(tmp['payload'], tmp['type'])
 
         if(refresh_gui):
@@ -318,7 +368,7 @@ def run_com():
             refresh_gui = False
             pass
         
-        if(comm_pipe_to_gui.poll(0.001)):
+        if(comm_pipe_to_gui.poll(0.01)):
             tmp = comm_pipe_to_gui.recv()
             if('EXIT' in tmp['gui_requests']):
                 comm_pipe_to_joy.send('EXIT')
@@ -333,17 +383,22 @@ def run_com():
                 mode = 'auto'
                 coords['latitude'] = float(tmp['gui_requests'][1])
                 coords['longitude'] = float(tmp['gui_requests'][2])
-                print(coords)
+                # print(coords)
 
-        if(comm_pipe_to_joy.poll(0.005)):
-            tmp = comm_pipe_to_joy.recv()
-            for p in tmp:
-                if(mode == 'man'):
-                    comm.send_data_over_radio(p.message, 101)
-                    print(f'{p.message}, {p.message_type}')
+        if(comm_pipe_to_joy.poll(0.01)):
+            # if(time_ms() - timeout > 5):
+                tmp = comm_pipe_to_joy.recv()
+                if i < 5:
+                    i += 1
                 else:
-                    pass
-        
+                    i = 0
+                    for p in tmp:
+                        if(mode == 'man'):
+                            comm.send_data_over_radio(p.message, 101)
+                            # print(f'{p.message}, {p.message_type}')
+                        else:
+                            pass
+                # timeout = time_ms()
         
 
 run_com()

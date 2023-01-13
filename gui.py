@@ -101,7 +101,7 @@ class UserInterface:
         
         while True:
             event, values = this.wnd.read(timeout = 50)
-            print(event)
+            # print(event)
             # print(event)
             # SetLED(this.wnd, 'con_stat', 'red')
             if event in ('Quit', sg.WIN_CLOSED):
