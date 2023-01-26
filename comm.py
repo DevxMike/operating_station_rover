@@ -12,6 +12,7 @@ import math
 from joystick_regulator import regulator, translate_hat
 import queue
 import time
+import pynmea2
 
 class Packet:
     def __init__(self, message_type: int, message: str) -> None:
@@ -130,8 +131,8 @@ class communication:
         try:
             packet = Packet(type, data).get_packet()
             this.radio.write(code_decode(packet))
-        except:
-            pass
+        except Exception as e:
+            print(e)
 
     def read_data_over_radio(this):
         try:
@@ -193,10 +194,27 @@ def translate_drive(data):
     print(ctrl)
     return ctrl
 
+values = {
+            'actual_latitude' : 0,
+            'actual_longitude': 0,
+            'desired_latitude' : 0,
+            'desired_longitude' : 0,
+            'roll'     : 0,
+            'yaw'      : 0,
+            'pitch'    : 0,
+            'LEFT'     : 0,
+            'CENTER'   : 0,
+            'RIGHT'    : 0
+        }
+
+def stringify(list_of_ints):
+    return ''.join([chr(c) for c in list_of_ints])
+
 def callback(type, payload):
     global communicates
     global states
     global refresh_gui
+    global values
     # global com_timeout
     # print(payload)
     if(type == 0):
@@ -210,10 +228,41 @@ def callback(type, payload):
     elif(type == 4):
         states['GPS'] = payload
         refresh_gui = True
+        tmp = stringify(payload.copy())
+        # print(tmp)
+        try:
+            tmp = tmp.split(',')
+            # print(tmp)
+            tmp2 = []
+            for i in range(len(tmp)):
+                tmp2.append(tmp[i].strip())
+            # print(tmp2)
+            # print(tmp2[1][5:len(tmp2)])
+            lon = str(tmp2[0])
+            lat = str(tmp2[1])
+            print(lat[5:])
+            print(lon[5:])
+            lat = lat[5:]
+            lon = lon[5:]
+            values['actual_latitude'] = float(pynmea2.dm_to_sd(lat))
+            values['actual_longitude'] = float(pynmea2.dm_to_sd(lon))
+        except Exception as e: print(e)
+        # print(payload)
     
     elif(type == 3):
         states['IMU'] = payload
         refresh_gui = True
+        tmp = stringify(payload.copy())
+        try:
+            tmp = tmp.split(',')
+            values['yaw'] = float(tmp[0][2:len(tmp[0])])
+            values['pitch'] = float(tmp[1][2:len(tmp[1])])
+            values['roll'] = float(tmp[2][2:len(tmp[2])])
+        except Exception as e: print(e)
+
+    elif(type == 102):
+        print(stringify(payload))
+        # print(payload)
 
 def joystick_process(pipe, joystick):
     axes = [0.0] * joystick.get_numaxes()
@@ -242,11 +291,14 @@ def joystick_process(pipe, joystick):
         # tmp = translate_drive(f'C,{int(hat_readings)}')
         # cam = tmp['cam']
         # tmp2 = Packet(1, f'C,{int(cam)}')
-        pwm_left = int(u1_val * 10)
-        pwm_right = int(u2_val * 10)
+        coef = 0.4
+
+        pwm_left = int(u1_val * 10 * coef)
+        pwm_right = int(u2_val * 10 * coef)
 
 
         result = []
+
 
         result.append(Packet(101, f'L,{pwm_left},R,{pwm_right}'))
 
@@ -272,10 +324,19 @@ def joystick_process(pipe, joystick):
 mode = 'man'
 millis = 0
 
+import GPS
+import fuzzy
+
 coords = {
         'longitude' : 0,
         'latitude' : 0
     }
+
+azimuth = GPS.azimuth()
+distance = GPS.distance()
+navi = fuzzy.navi()
+navi_state = 0
+course = 0
 
 def run_com():
     global communicates
@@ -284,6 +345,13 @@ def run_com():
     global mode
     global millis 
     global coords
+    global values
+    global navi
+    global azimuth
+    global distance
+    global navi_state
+    global course
+
     timeout = time_ms()
     i = 0
 
@@ -331,6 +399,7 @@ def run_com():
         read_data = []
 
         if(time_ms() - millis > 700):
+            # print(values)
             comm.send_data_over_radio('', 7)
             comm.send_data_over_radio('', 8)
             millis = time_ms()
@@ -338,9 +407,46 @@ def run_com():
                 comm.send_data_over_radio('M', 5)
             else:
                 comm.send_data_over_radio('A', 5)
-                lon = coords['longitude']
-                lat = coords['latitude']
-                comm.send_data_over_radio(f'{lon},{lat}', 100)
+                comm.send_data_over_radio('', 100)
+                # lon = coords['longitude']
+                # lat = coords['latitude']
+                # comm.send_data_over_radio(f'{lon},{lat}', 100)
+                try:
+                    if(navi_state == 0):
+                        course = azimuth(
+                            (values['actual_latitude'], values['actual_longitude']),
+                            (values['desired_latitude'], values['desired_longitude'])
+                        ) 
+                        navi_state = 1
+
+                    elif(navi_state == 1):
+                        THETA = (course - values['yaw']) % 180
+                        Z = distance(
+                            (values['actual_latitude'], values['actual_longitude']),
+                            (values['desired_latitude'], values['desired_longitude'])
+                        )
+
+                    
+                        print(f'Z:{Z}, diff:{THETA}, course:{course}')
+                        left, right = navi.get_output(Z, THETA)
+                        coef = 0.4
+                        if(abs(THETA) > 30):
+                            left = 60
+                            right = -60
+                        else:
+                            left = 60
+                            right = 60
+
+                        if(Z <= 0.001):
+                            left = right = 0
+                        tmp = f'L,{int(left*10*coef)},R,{int(right*10*coef)}'
+                        print(tmp)
+                        comm.send_data_over_radio(tmp, 101)
+                    
+
+
+                except:
+                    pass
 
             
         # if(time_ms() - millis_timeout > 5):
@@ -380,9 +486,10 @@ def run_com():
                 mode = 'man'
             
             elif('auto' in tmp['gui_requests']):
+                navi_state = 0
                 mode = 'auto'
-                coords['latitude'] = float(tmp['gui_requests'][1])
-                coords['longitude'] = float(tmp['gui_requests'][2])
+                values['desired_latitude'] = float(tmp['gui_requests'][1])
+                values['desired_longitude'] = float(tmp['gui_requests'][2])
                 # print(coords)
 
         if(comm_pipe_to_joy.poll(0.01)):

@@ -2,6 +2,7 @@ from multiprocessing import Process, Pipe
 from threading import Thread, Semaphore
 from turtle import home
 import PySimpleGUI as sg
+import pynmea2
 
 kill_all_threads = False
 
@@ -147,9 +148,20 @@ class UserInterface:
                         diag = diag.split(',')
                         GPS = GPS.split(',')
                         IMU = IMU.split(',')
+
+                        for i in range(len(GPS)):
+                            GPS[i] = GPS[i].strip()
+
+                        # print(GPS)
+                        this.table_values['latitude'] = float(pynmea2.dm_to_sd(GPS[1][5:len(GPS[1])]))
+                        this.table_values['longitude'] = float(pynmea2.dm_to_sd(GPS[0][5:len(GPS[0])]))
                         
-                        this.table_values['latitude'] = float(GPS[1][5:len(GPS[1])])
-                        this.table_values['longitude'] = float(GPS[0][4:len(GPS[0])])
+
+                        # print(f'{diag} {IMU} {GPS}')
+                    except Exception as e:
+                        print(e)
+
+                    try:
                         this.table_values['yaw'] = float(IMU[0][2:len(IMU[0])])
                         this.table_values['pitch'] = float(IMU[1][2:len(IMU[1])])
                         this.table_values['roll'] = float(IMU[2][2:len(IMU[2])])
@@ -158,11 +170,12 @@ class UserInterface:
                         this.table_values['GPS_OK'] = diag[2][len(diag[2]) - 1]
                         this.table_values['USB_OK'] = diag[3][len(diag[3]) - 1]
                         this.table_values['PWR_OK'] = diag[4][len(diag[4]) - 3]
-
-                        this.wnd['param_table'].update(values=[[[k], [v]] for k, v in this.table_values.items()])
-                        print(f'{diag} {IMU} {GPS}')
                     except:
                         pass
+
+                    this.wnd['param_table'].update(values=[[[k], [v]] for k, v in this.table_values.items()])
+
+                        
                 
                 # if('comm_status_refresh' in tmp):
                 #     SetLED(this.wnd, 'con_stat', tmp['comm_status_refresh'])
